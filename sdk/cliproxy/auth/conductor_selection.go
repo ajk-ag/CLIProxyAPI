@@ -86,6 +86,7 @@ type authSelectionEligibility struct {
 	requiredKind     string
 	credentialPolicy string
 	disallowFreeAuth bool
+	clientScope      clientAccountScope
 }
 
 func withRequiredAuthKind(ctx context.Context, requiredKind string) context.Context {
@@ -105,7 +106,10 @@ func credentialPolicyFromContext(ctx context.Context) string {
 }
 
 func authSelectionEligibilityForRequest(ctx context.Context, opts cliproxyexecutor.Options) authSelectionEligibility {
-	eligibility := authSelectionEligibility{disallowFreeAuth: disallowFreeAuthFromMetadata(opts.Metadata)}
+	eligibility := authSelectionEligibility{
+		disallowFreeAuth: disallowFreeAuthFromMetadata(opts.Metadata),
+		clientScope:      clientAccountScopeForRequest(ctx),
+	}
 	if ctx != nil {
 		eligibility.requiredKind, _ = ctx.Value(requiredAuthKindContextKey{}).(string)
 		eligibility.credentialPolicy, _ = ctx.Value(credentialPolicyContextKey{}).(string)
@@ -115,6 +119,9 @@ func authSelectionEligibilityForRequest(ctx context.Context, opts cliproxyexecut
 
 func (e authSelectionEligibility) allows(auth *Auth) bool {
 	if auth == nil {
+		return false
+	}
+	if !e.clientScope.allows(auth) {
 		return false
 	}
 	if e.requiredKind != "" && auth.AuthKind() != e.requiredKind {
@@ -976,6 +983,9 @@ func (m *Manager) pickViaBuiltinScheduler(ctx context.Context, strategy schedule
 	}
 	if selected == nil {
 		return nil, true, &Error{Code: "auth_not_found", Message: "selector returned no auth"}
+	}
+	if errScope := clientScopeViolation(ctx, selected); errScope != nil {
+		return nil, true, errScope
 	}
 	return selected, true, nil
 }
@@ -1908,6 +1918,9 @@ func (m *Manager) pickNextLegacy(ctx context.Context, provider, model string, op
 	if selected == nil {
 		return nil, nil, &Error{Code: "auth_not_found", Message: "selector returned no auth"}
 	}
+	if errScope := clientScopeViolation(ctx, selected); errScope != nil {
+		return nil, nil, errScope
+	}
 	authCopy := selected.Clone()
 	if !selected.indexAssigned {
 		m.mu.Lock()
@@ -1954,6 +1967,9 @@ func (m *Manager) SelectAuthByKind(ctx context.Context, provider, model, require
 	}
 	if selected == nil {
 		return nil, &Error{Code: "auth_not_found", Message: "selector returned no auth"}
+	}
+	if errScope := clientScopeViolation(ctx, selected); errScope != nil {
+		return nil, errScope
 	}
 	if m.HomeEnabled() {
 		return nil, &Error{Code: "home_unavailable", Message: "legacy auth selection is unavailable while Home is enabled", HTTPStatus: http.StatusServiceUnavailable}
@@ -2134,6 +2150,9 @@ func (m *Manager) pickNext(ctx context.Context, provider, model string, opts cli
 	if selected == nil {
 		return nil, nil, &Error{Code: "auth_not_found", Message: "selector returned no auth"}
 	}
+	if errScope := clientScopeViolation(ctx, selected); errScope != nil {
+		return nil, nil, errScope
+	}
 	authCopy := selected.Clone()
 	if !selected.indexAssigned {
 		m.mu.Lock()
@@ -2254,6 +2273,9 @@ func (m *Manager) pickNextMixedLegacy(ctx context.Context, providers []string, m
 	if selected == nil {
 		return nil, nil, "", &Error{Code: "auth_not_found", Message: "selector returned no auth"}
 	}
+	if errScope := clientScopeViolation(ctx, selected); errScope != nil {
+		return nil, nil, "", errScope
+	}
 	providerKey := executorKeyFromAuth(selected)
 	executor, okExecutor := m.Executor(providerKey)
 	if !okExecutor {
@@ -2341,6 +2363,9 @@ func (m *Manager) pickNextMixed(ctx context.Context, providers []string, model s
 	}
 	if selected == nil {
 		return nil, nil, "", &Error{Code: "auth_not_found", Message: "selector returned no auth"}
+	}
+	if errScope := clientScopeViolation(ctx, selected); errScope != nil {
+		return nil, nil, "", errScope
 	}
 	executor, okExecutor := m.Executor(providerKey)
 	if !okExecutor {

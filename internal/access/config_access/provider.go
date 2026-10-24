@@ -5,9 +5,26 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	sdkaccess "github.com/router-for-me/CLIProxyAPI/v8/sdk/access"
 	sdkconfig "github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
+	log "github.com/sirupsen/logrus"
 )
+
+// RegisterConfig registers the inline key provider for cfg. Scoped keys are left out when
+// cfg cannot enforce their account limits, so they are rejected rather than unlimited.
+func RegisterConfig(cfg *config.Config) {
+	if cfg == nil {
+		Register(nil)
+		return
+	}
+	sdkCfg := cfg.SDKConfig
+	if reason := cfg.ScopedAPIKeysBlockedReason(); reason != "" {
+		log.Errorf("access.scoped-api-keys are rejected because %s", reason)
+		sdkCfg.ScopedAPIKeys = nil
+	}
+	Register(&sdkCfg)
+}
 
 // Register ensures the config-access provider is available to the access manager.
 func Register(cfg *sdkconfig.SDKConfig) {
@@ -16,7 +33,8 @@ func Register(cfg *sdkconfig.SDKConfig) {
 		return
 	}
 
-	keys := normalizeKeys(cfg.APIKeys)
+	// Scoped keys authenticate here too; account limits are enforced at selection time.
+	keys := normalizeKeys(cfg.ClientAPIKeys())
 	if len(keys) == 0 {
 		sdkaccess.UnregisterProvider(sdkaccess.AccessProviderTypeConfigAPIKey)
 		return

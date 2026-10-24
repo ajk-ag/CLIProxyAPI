@@ -591,12 +591,28 @@ func (s *Server) AttachWebsocketRoute(path string, handler http.Handler) {
 		}
 		authMiddleware(c)
 	}
+	// Provider connections here register new upstream accounts that every unrestricted
+	// key may use. Scoped keys must not be able to add accounts, so while any scoped key
+	// is configured only an unrestricted key may connect, even with ws-auth off.
+	scopedKeyGuard := func(c *gin.Context) {
+		cfg := s.getConfig()
+		if cfg == nil || len(cfg.ScopedAPIKeys) == 0 {
+			c.Next()
+			return
+		}
+		key, _ := c.Get("userApiKey")
+		if principal, _ := key.(string); isUnrestrictedAPIKey(cfg, principal) {
+			c.Next()
+			return
+		}
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "this API key cannot open provider connections"})
+	}
 	finalHandler := func(c *gin.Context) {
 		handler.ServeHTTP(c.Writer, c.Request)
 		c.Abort()
 	}
 
-	s.engine.GET(trimmed, conditionalAuth, finalHandler)
+	s.engine.GET(trimmed, conditionalAuth, scopedKeyGuard, finalHandler)
 }
 
 // isAnthropicModelsRequest reports whether a /v1/models request should be served in
@@ -1304,4 +1320,23 @@ func homeModelInt64Value(model map[string]any, keys ...string) int64 {
 		}
 	}
 	return 0
+}
+
+// isUnrestrictedAPIKey reports whether key is listed in api-keys and not in scoped-api-keys.
+func isUnrestrictedAPIKey(cfg *config.Config, key string) bool {
+	key = strings.TrimSpace(key)
+	if cfg == nil || key == "" {
+		return false
+	}
+	for _, scoped := range cfg.ScopedAPIKeys {
+		if strings.TrimSpace(scoped.APIKey) == key {
+			return false
+		}
+	}
+	for _, unrestricted := range cfg.APIKeys {
+		if strings.TrimSpace(unrestricted) == key {
+			return true
+		}
+	}
+	return false
 }

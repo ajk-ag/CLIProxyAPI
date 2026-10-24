@@ -626,6 +626,13 @@ func (h *BaseAPIHandler) GetContextWithCancel(handler interfaces.APIHandler, c *
 			}
 		}()
 	}
+	if requestCtx != nil && coreusage.APIKeyFromContext(newCtx) == "" {
+		// Carry the client key as a typed value. Account scoping reads it, and the gin
+		// context is recycled for another request once this handler returns.
+		if key := coreusage.APIKeyFromContext(requestCtx); key != "" {
+			newCtx = coreusage.WithAPIKey(newCtx, key)
+		}
+	}
 	newCtx = context.WithValue(newCtx, "gin", c)
 	newCtx = context.WithValue(newCtx, "handler", handler)
 	return newCtx, func(params ...interface{}) {

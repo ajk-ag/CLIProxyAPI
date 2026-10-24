@@ -109,6 +109,18 @@ access:
     - "your-api-key-1"
     - "your-api-key-2"
     - "your-api-key-3"
+  # Optional client keys that may only use the listed upstream accounts.
+  # List each account by auth file name, auth ID, or auth_index. A scoped key never
+  # falls back to other accounts: when its accounts are exhausted, its requests fail.
+  # While any scoped key is set, a request must carry a key from api-keys (every
+  # account) or from this list (only its accounts); anything else gets no account.
+  # Keep scoped keys out of api-keys, so a build without this feature rejects them.
+  # scoped-api-keys:
+  #   - api-key: "your-scoped-key"
+  #     name: "team-b"            # optional label
+  #     accounts:
+  #       - "claude-user@example.com.json"
+  #       - "codex-user@example.com-pro.json"
 
 # Optional credential concurrency and observation contracts.
 

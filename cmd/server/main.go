@@ -681,7 +681,7 @@ func main() {
 	}
 
 	// Register built-in access providers before constructing services.
-	configaccess.Register(&cfg.SDKConfig)
+	configaccess.RegisterConfig(cfg)
 	pluginHost.ApplyConfig(context.Background(), cfg)
 	if configLoadedFromHome && homePluginStatusReady {
 		errHomePluginLoad := homeplugins.MarkLoadResults(&homePluginSyncReport, pluginHost)
