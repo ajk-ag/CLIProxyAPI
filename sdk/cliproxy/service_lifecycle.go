@@ -133,7 +133,13 @@ func (s *Service) Run(ctx context.Context) error {
 	}
 
 	// handlers no longer depend on legacy clients; pass nil slice initially
-	s.server = api.NewServer(cfg, s.coreManager, s.accessManager, s.configPath, s.serverOptions...)
+	serverOptions := s.serverOptions
+	if !homeEnabled {
+		if recorder := s.startQuotaHistory(); recorder != nil {
+			serverOptions = append(append([]api.ServerOption(nil), s.serverOptions...), api.WithQuotaHistory(recorder))
+		}
+	}
+	s.server = api.NewServer(cfg, s.coreManager, s.accessManager, s.configPath, serverOptions...)
 	s.syncPluginRuntimeConfig(ctx)
 	if homeEnabled {
 		s.configRuntimeMu.Lock()
@@ -269,6 +275,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 		if runCancel != nil {
 			runCancel()
 		}
+		s.stopQuotaHistory()
 
 		s.homeLifecycleMu.Lock()
 		if supervisor := s.homeSupervisor; supervisor != nil {
